@@ -21,3 +21,7 @@ If we ever get more than 255.mp3 of those create folder 09 and carry on
 
 Folders 11-99 is for songs you like and think fit in these can be as long as possible, preferably not too annoying
 (use scripts/nameconverter.sh to suffer less)
+
+
+Enumerating files on SD card doesn't work, DFplayer has it's chip name erased, we have to hardcode available names, sorry.
+Also randomness might suck.
