@@ -110,12 +110,6 @@ case DFPlayerPlayFinished:
   }
 }
 
-// Function to play a specific sound file with a given duration (unchanged)
-void playSound(int soundNumber, int duration) {
-  myDFPlayer.play(soundNumber);
-  delay(duration * 1000); // Convert duration from seconds to milliseconds
-}
-
 // Play a random non-loop file once, then automatically chain to function 4 on finish if still connected
 void playRandomOnceThenLoop() {
   if (nonLoops.empty()) {
