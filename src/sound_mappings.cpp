@@ -15,12 +15,12 @@ void initSoundMappings() {
     }
 
     // Folder 10 – short meme sounds preferably short that turn into perfect loops
-    for (uint8_t i = 1; i <= 66; i++) {
+    for (uint8_t i = 1; i <= 72; i++) {
         nonLoops.emplace_back(10, i);
     }
 
-    // Folder 11 – non-loops 120 files 14feb26
-    for (uint8_t i = 1; i <= 120; i++) {
+    // Folder 11 – non-loops 120 files 28feb26
+    for (uint8_t i = 1; i <= 127; i++) {
         nonLoops.emplace_back(11, i);
     }
 
