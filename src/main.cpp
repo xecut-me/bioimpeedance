@@ -23,9 +23,10 @@ const unsigned long FADE_DURATION_MS = 3000;  // 3 seconds
 bool fadingOut = false;
 int originalVolume = 25;   // We'll remember last set volume
 // debounce shit
-unsigned long lastSwitchChange = 0;
-const unsigned long DEBOUNCE_MS = 40;   // 40-80ms should be enough for reed
-bool lastConnected = false;
+bool switchActive = false;
+unsigned long confirmationTimer = 0;
+const unsigned long ON_HOLD_MS   = 1000;   // 1 second hall activation
+const unsigned long OFF_HOLD_MS  = 50; // just debounce
 
 // Switch pin
 const int switchPin = 10;  // GPIO10 to ground
@@ -224,21 +225,36 @@ void loop() {
   handleFadeOut();
 
   // ── Switch monitoring ──────────────────────────
-  bool rawConnected = (digitalRead(switchPin) == LOW);
+bool rawConnected = (digitalRead(switchPin) == LOW);
   unsigned long now = millis();
 
-  if (rawConnected != lastConnected && (now - lastSwitchChange >= DEBOUNCE_MS)) {
-    lastConnected = rawConnected;
-    lastSwitchChange = now;
+  if (rawConnected != switchActive) {
+    // raw state changed → start confirmation timer
+    if (confirmationTimer == 0) {
+      confirmationTimer = now;
+    }
 
-  if (lastConnected && currentState == IDLE) {
-      playRandomOnceThenLoop();
+    unsigned long requiredHold = rawConnected ? ON_HOLD_MS : OFF_HOLD_MS;
+
+    if (now - confirmationTimer >= requiredHold) {
+      // Confirmed! Update state and act
+      switchActive = rawConnected;
+      confirmationTimer = 0;
+
+      if (switchActive && currentState == IDLE) {
+        playRandomOnceThenLoop();
+      }
+      else if (!switchActive && (currentState == PLAYING_NON_LOOP || currentState == LOOPING)) {
+        if (!fadingOut) startFadeOutAndStop();
+      }
     }
-    else if (!lastConnected && (currentState == PLAYING_NON_LOOP || currentState == LOOPING)) {
-      if (!fadingOut) startFadeOutAndStop();
-    }
+  } else {
+    // back to stable state → cancel any pending confirmation
+    confirmationTimer = 0;
   }
 
   // Small delay is usually fine — helps stability
   delay(5);
 }
+
+//TODO: wait for 1 second of hall sensor being active before starting playback. 
