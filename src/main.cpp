@@ -1,117 +1,65 @@
 #include <Arduino.h>
-#include <HardwareSerial.h>  // For HardwareSerial support
-#include "DFRobotDFPlayerMini.h"  // DFPlayer library
-#include <vector>  // For std::vector
-#include <utility>  // For std::pair
-#include "sound_mappings.h"
+#include "DYPlayerArduino.h"  // https://github.com/SnijderC/dyplayer
+#include <vector>
+#include <utility>
 
-// we're on standard uart 21 and 20
+// UART for the DYPlayer (same pins as your original code)
 HardwareSerial FPSerial(1);
+DY::Player myDYPlayer(&FPSerial);
 
-// Create an instance of the DFPlayer Mini
-DFRobotDFPlayerMini myDFPlayer;
+// Dynamic lists built from actual SD card
+std::vector<std::pair<const char*, uint16_t>> perfectLoops;  // "PERFECT" + index
+std::vector<std::pair<const char*, uint16_t>> nonLoops;      // "MUSIC" + "MEME" + index
 
-// hardcoded SD card folder structure in sound_mappings.cpp
-void initSoundMappings();
-
-// State for playback chaining
-enum State {IDLE, PLAYING_NON_LOOP, LOOPING};
+// State machine (unchanged)
+enum State { IDLE, PLAYING_NON_LOOP, LOOPING };
 State currentState = IDLE;
 
 unsigned long fadeStartTime = 0;
-const unsigned long FADE_DURATION_MS = 3000;  // 3 seconds
+const unsigned long FADE_DURATION_MS = 3000;
 bool fadingOut = false;
-int originalVolume = 25;   // We'll remember last set volume
-// debounce shit
+const int originalVolume = 25;        // 0-30, never changes at runtime
+
+// Hall-switch debounce
 bool switchActive = false;
 unsigned long confirmationTimer = 0;
-const unsigned long ON_HOLD_MS   = 1000;   // 1 second hall activation
-const unsigned long OFF_HOLD_MS  = 50; // just debounce
+const unsigned long ON_HOLD_MS  = 1000;
+const unsigned long OFF_HOLD_MS = 50;
 
-// Switch pin
-const int switchPin = 10;  // GPIO10 to ground
+const int switchPin = 10;
 
-// Forward declaration for loopRandomPerfect
+// Forward declaration
 void loopRandomPerfect();
 
-// Function to print detailed messages from the DFPlayer Mini
-void printDetail(uint8_t type, int value) {
-  switch (type) {
-    case TimeOut:
-      Serial.println(F("Time Out!"));
-      break;
-    case WrongStack:
-      Serial.println(F("Stack Wrong!"));
-      break;
-    case DFPlayerCardInserted:
-      Serial.println(F("Card Inserted!"));
-      break;
-    case DFPlayerCardRemoved:
-      Serial.println(F("Card Removed!"));
-      break;
-    case DFPlayerCardOnline:
-      Serial.println(F("Card Online!"));
-      break;
-    case DFPlayerUSBInserted:
-      Serial.println("USB Inserted!");
-      break;
-    case DFPlayerUSBRemoved:
-      Serial.println("USB Removed!");
-      break;
-case DFPlayerPlayFinished:
-  Serial.print(F("Number:"));
-  Serial.print(value);
-  Serial.println(F(" Play Finished!"));
-
-  if (fadingOut) {
-    // Already fading → don't chain anything
-    break;
-  }
-
-  if (currentState == PLAYING_NON_LOOP) {
-    // Only chain if switch is STILL held (LOW)
-    if (digitalRead(switchPin) == LOW) {
-      loopRandomPerfect();
-      currentState = LOOPING;
-    } else {
-      currentState = IDLE;
-    }
-  }
-  break;
-    case DFPlayerError:
-      Serial.print(F("DFPlayerError:"));
-      switch (value) {
-        case Busy:
-          Serial.println(F("Card not found"));
-          break;
-        case Sleeping:
-          Serial.println(F("Sleeping"));
-          break;
-        case SerialWrongStack:
-          Serial.println(F("Get Wrong Stack"));
-          break;
-        case CheckSumNotMatch:
-          Serial.println(F("Check Sum Not Match"));
-          break;
-        case FileIndexOut:
-          Serial.println(F("File Index Out of Bound"));
-          break;
-        case FileMismatch:
-          Serial.println(F("Cannot Find File"));
-          break;
-        case Advertise:
-          Serial.println(F("In Advertise"));
-          break;
-        default:
-          break;
-      }
-      break;
-    default:
-      break;
-  }
+// ===================================================================
+// Safe path builder (library requires non-const char*)
+// ===================================================================
+void buildPath(char* buf, size_t bufSize, const char* folder, uint16_t fileNum) {
+  snprintf(buf, bufSize, "/%s/%05u.mp3", folder, fileNum);
 }
 
-// Play a random non-loop file once, then automatically chain to function 4 on finish if still connected
+// ===================================================================
+// Get number of files in a folder (while muted)
+// ===================================================================
+uint16_t getFolderFileCount(const char* folderName) {
+  if (strlen(folderName) == 0) return 0;
+
+  char dummyBuf[64];
+  buildPath(dummyBuf, sizeof(dummyBuf), folderName, 1);
+
+  myDYPlayer.playSpecifiedDevicePath(DY::device_t::Sd, dummyBuf);
+  delay(80);
+
+  uint16_t count = myDYPlayer.getSoundCountDir();
+
+  myDYPlayer.stop();
+  delay(20);
+  return count;
+}
+
+// ===================================================================
+// Playback helpers
+// ===================================================================
 void playRandomOnceThenLoop() {
   if (nonLoops.empty()) {
     Serial.println(F("No non-loop files available."));
@@ -119,7 +67,13 @@ void playRandomOnceThenLoop() {
   }
   size_t idx = random(nonLoops.size());
   auto p = nonLoops[idx];
-  myDFPlayer.playFolder(p.first, p.second);
+
+  myDYPlayer.setCycleMode(DY::play_mode_t::OneOff);
+
+  char pathBuf[64];
+  buildPath(pathBuf, sizeof(pathBuf), p.first, p.second);
+  myDYPlayer.playSpecifiedDevicePath(DY::device_t::Sd, pathBuf);
+
   currentState = PLAYING_NON_LOOP;
   Serial.print(F("Playing non-loop: Folder "));
   Serial.print(p.first);
@@ -127,7 +81,6 @@ void playRandomOnceThenLoop() {
   Serial.println(p.second);
 }
 
-// Loop a random perfect loop file
 void loopRandomPerfect() {
   if (perfectLoops.empty()) {
     Serial.println(F("No perfect loop files available."));
@@ -135,126 +88,148 @@ void loopRandomPerfect() {
   }
   size_t idx = random(perfectLoops.size());
   auto p = perfectLoops[idx];
-  myDFPlayer.playFolder(p.first, p.second);
-  myDFPlayer.enableLoop();  // Enable looping for this track
+
+  myDYPlayer.setCycleMode(DY::play_mode_t::RepeatOne);
+
+  char pathBuf[64];
+  buildPath(pathBuf, sizeof(pathBuf), p.first, p.second);
+  myDYPlayer.playSpecifiedDevicePath(DY::device_t::Sd, pathBuf);
+
+  currentState = LOOPING;
   Serial.print(F("Looping perfect loop: Folder "));
   Serial.print(p.first);
   Serial.print(F(", File "));
   Serial.println(p.second);
 }
 
-// Helper to smoothly fade volume down to 0, then stop
+// ===================================================================
+// Fade-out
+// ===================================================================
 void startFadeOutAndStop() {
-  if (fadingOut) return;  // already fading
-
-  originalVolume = myDFPlayer.readVolume();  // try to get current (may return -1 on some modules)
-  if (originalVolume <= 0 || originalVolume > 25) originalVolume = 25;
-
+  if (fadingOut) return;
   fadingOut = true;
   fadeStartTime = millis();
-  Serial.println(F("Starting 5s volume fade-out..."));
+  Serial.println(F("Starting 3s volume fade-out..."));
 }
 
-// Call this regularly during fade
 void handleFadeOut() {
   if (!fadingOut) return;
 
   unsigned long elapsed = millis() - fadeStartTime;
   if (elapsed >= FADE_DURATION_MS) {
-    myDFPlayer.volume(0);
-    myDFPlayer.stop();
-    myDFPlayer.disableLoop();        // just in case
+    myDYPlayer.setVolume(0);
+    myDYPlayer.stop();
     fadingOut = false;
     currentState = IDLE;
     Serial.println(F("Fade complete → playback stopped."));
-    myDFPlayer.volume(originalVolume);
-    Serial.println(F("Volume restored to original value."));
+    myDYPlayer.setVolume(originalVolume);
+    Serial.println(F("Volume restored."));
   } else {
-    // Linear fade (you can also use ease-in/out if desired)
     float progress = (float)elapsed / FADE_DURATION_MS;
     int newVol = originalVolume * (1.0f - progress);
     if (newVol < 0) newVol = 0;
-    myDFPlayer.volume(newVol);
+    myDYPlayer.setVolume(newVol);
   }
 }
 
+// ===================================================================
+// Play-state polling (replaces DFPlayer event)
+// ===================================================================
+DY::play_state_t lastPlayState = DY::play_state_t::Stopped;
+
 void setup() {
-  // Begin FPSerial on custom pins for UART1
   FPSerial.begin(9600, SERIAL_8N1, 20, 21);
   Serial.begin(115200);
-
-  // Set up switch pin with internal pull-up
   pinMode(switchPin, INPUT_PULLUP);
 
-  Serial.println(F("DFRobot DFPlayer Mini Demo"));
-  Serial.println(F("Initializing DFPlayer ... (May take 3~5 seconds)"));
-  delay(3000);  // Give module time to power up
+  Serial.println(F("DYPlayer Mini Demo"));
+  Serial.println(F("Initializing DYPlayer ..."));
+  delay(3000);
 
-  myDFPlayer.setTimeOut(1000);  // Increase timeout for quirky reads
-
-  if (!myDFPlayer.begin(FPSerial)) {
-    Serial.println(F("Unable to begin:"));
-    Serial.println(F("1. Please recheck the connection!"));
-    Serial.println(F("2. Please insert the SD card!"));
-    // while (true) { delay(0); }  // Temporarily commented to continue for debugging
+  // Quick connection test
+  if (myDYPlayer.checkPlayState() == DY::play_state_t::Fail) {
+    Serial.println(F("Unable to communicate with DYPlayer! Check wiring/SD."));
   } else {
-    Serial.println(F("DFPlayer Mini online."));
-    myDFPlayer.reset();  // Reset module to ensure clean state
-    delay(2000);  // Wait after reset
+    Serial.println(F("DYPlayer online."));
   }
+  myDYPlayer.stop();
 
-  myDFPlayer.volume(originalVolume); // Set volume value. From 0 to 30
+  // ── Build file lists dynamically (replaces sound_mappings.cpp) ──
+  Serial.println(F("Scanning SD card folders..."));
+  myDYPlayer.setVolume(0);                     // mute during scan
 
-  // play sound on boot if we are okay
-  myDFPlayer.playFolder(10, 1);
+  // PERFECT
+  uint16_t count = getFolderFileCount("PERFECT");
+  perfectLoops.clear();
+  for (uint16_t i = 1; i <= count; ++i) perfectLoops.emplace_back("PERFECT", i);
 
-  // Seed random (use an unused analog pin if GPIO0 is not free)
+  // MUSIC
+  count = getFolderFileCount("MUSIC");
+  nonLoops.clear();
+  for (uint16_t i = 1; i <= count; ++i) nonLoops.emplace_back("MUSIC", i);
+
+  // MEME
+  count = getFolderFileCount("MEME");
+  for (uint16_t i = 1; i <= count; ++i) nonLoops.emplace_back("MEME", i);
+
+  myDYPlayer.setVolume(originalVolume);
+
+  Serial.print(F("perfectLoops (PERFECT): ")); Serial.println(perfectLoops.size());
+  Serial.print(F("nonLoops (MUSIC+MEME): "));  Serial.println(nonLoops.size());
+
   randomSeed(analogRead(0));
 
-  // BEWARE THE HARDCODED MP3S
-  initSoundMappings();
+  // Boot confirmation sound
+  if (!nonLoops.empty()) {
+    char bootBuf[64];
+    buildPath(bootBuf, sizeof(bootBuf), "MEME", 1);
+    myDYPlayer.playSpecifiedDevicePath(DY::device_t::Sd, bootBuf);
+    Serial.println(F("Boot confirmation: MEME/00001.mp3"));
+  }
 }
 
 void loop() {
-  // Handle DFPlayer events
-  if (myDFPlayer.available()) {
-    printDetail(myDFPlayer.readType(), myDFPlayer.read());
-  }
+  // Play-state polling
+  DY::play_state_t curr = myDYPlayer.checkPlayState();
 
-  // ── Volume fade handling ───────────────────────
+  if (lastPlayState == DY::play_state_t::Playing &&
+      curr == DY::play_state_t::Stopped) {
+
+    if (!fadingOut && currentState == PLAYING_NON_LOOP) {
+      if (digitalRead(switchPin) == LOW) {
+        loopRandomPerfect();
+        currentState = LOOPING;
+      } else {
+        currentState = IDLE;
+      }
+    }
+  }
+  lastPlayState = curr;
+
   handleFadeOut();
 
-  // ── Switch monitoring ──────────────────────────
-bool rawConnected = (digitalRead(switchPin) == LOW);
+  // Switch debounce (exactly as you tested)
+  bool rawConnected = (digitalRead(switchPin) == LOW);
   unsigned long now = millis();
 
   if (rawConnected != switchActive) {
-    // raw state changed → start confirmation timer
-    if (confirmationTimer == 0) {
-      confirmationTimer = now;
-    }
+    if (confirmationTimer == 0) confirmationTimer = now;
 
     unsigned long requiredHold = rawConnected ? ON_HOLD_MS : OFF_HOLD_MS;
 
     if (now - confirmationTimer >= requiredHold) {
-      // Confirmed! Update state and act
       switchActive = rawConnected;
       confirmationTimer = 0;
 
       if (switchActive && currentState == IDLE) {
         playRandomOnceThenLoop();
-      }
-      else if (!switchActive && (currentState == PLAYING_NON_LOOP || currentState == LOOPING)) {
+      } else if (!switchActive && (currentState == PLAYING_NON_LOOP || currentState == LOOPING)) {
         if (!fadingOut) startFadeOutAndStop();
       }
     }
   } else {
-    // back to stable state → cancel any pending confirmation
     confirmationTimer = 0;
   }
 
-  // Small delay is usually fine — helps stability
   delay(5);
 }
-
-//TODO: wait for 1 second of hall sensor being active before starting playback. 

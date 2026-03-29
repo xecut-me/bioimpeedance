@@ -1,27 +1,28 @@
 # bioimpeedance
 this thing lives under the sink
 
-If you want to add something, there are a few rules!
+It's an esp32-c3 mini connected to a DY-SV5W MP3 Player Module which powers a speaker
+
+If you want to add something to the playlist you can!
 
 SD card folder structure:
-Folders are named 01-99
-Files are named 001.mp3-255.mp3
+There are 3 folders, PERFECT, MEME and MUSIC
+Files are named 00001.mp3-65535.mp3
 
-NORMALIZE EVERYTHING please, so that the sound levels would be more or less equal
-mp3 tag everything please, since there would be no more file names
+If you want to add something, please normalize it first, so that the sound levels of different tracks would be more or less equal
+Also, since the file naming is a mess tag everything please, it would be easier to find and delete stuff later
 
-Folder 01 is for perfect loops only!
-That is: mp3s that can be played repeatedly without providing a feeling of start/end of the song
-The hardware should be able to handle it
-If we ever go beyond 255 perfect loops, create folder 02 and add it as perfectLoops to sound_mappings.cpp
+Folder PERFECT is for perfect loops only!
+That is: mp3s that can be played repeatedly without a feeling of start/end of the song
+The hardware handles it quite nicely by looping these files
 
-Folder 10 is for short-ish and funny stuff, preferably not too annoying
-These should be added as nonLoops to sound_mappings.cpp
-If we ever get more than 255.mp3 of those create folder 09 and carry on
+Folder MEME is for short-ish and funny stuff, preferably not too annoying
+These should be played before going into a nice loop, so you can be creative
 
-Folders 11-99 is for songs you like and think fit in these can be as long as possible, preferably not too annoying
-(use scripts/nameconverter.sh to suffer less)
+Folder MUSIC is for normal songs, they can be as long as you want (I think), use your best judgement content-wise
 
+~~Enumerating files on SD card doesn't work, DFplayer has it's chip name erased, we have to hardcode available names, sorry.~~
+DY can tell us the number of files in a folder, for random play that's good enough. 
+You can add mp3s to the appropriate folders and they should be in the random draw pool after the esp restarts and requeries the number of files. 
 
-Enumerating files on SD card doesn't work, DFplayer has it's chip name erased, we have to hardcode available names, sorry.
 Also randomness might suck.
