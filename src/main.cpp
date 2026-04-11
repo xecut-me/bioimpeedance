@@ -18,7 +18,7 @@ State currentState = IDLE;
 unsigned long fadeStartTime = 0;
 const unsigned long FADE_DURATION_MS = 3000;
 bool fadingOut = false;
-const int originalVolume = 25;        // 0-30, never changes at runtime
+const int originalVolume = 30;        // 0-30, never changes at runtime
 
 // Hall-switch debounce
 bool switchActive = false;
