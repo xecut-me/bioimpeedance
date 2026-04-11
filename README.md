@@ -1,7 +1,8 @@
 # bioimpeedance
 this thing lives under the sink
 
-It's an esp32-c3 mini connected to a DY-SV5W MP3 Player Module which powers a speaker 
+It's an esp32-c3 mini connected to a DY-SV5W MP3 Player Module which powers a speaker
+
 Using this library that hasn't been updated for 4 years, but it works https://github.com/SnijderC/dyplayer/
 
 
