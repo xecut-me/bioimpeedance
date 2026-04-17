@@ -27,6 +27,7 @@ const unsigned long ON_HOLD_MS  = 1000;
 const unsigned long OFF_HOLD_MS = 50;
 
 const int switchPin = 10;
+const int signOutPin = 3;
 
 // Forward declaration
 void loopRandomPerfect();
@@ -186,6 +187,8 @@ void setup() {
     myDYPlayer.playSpecifiedDevicePath(DY::device_t::Sd, bootBuf);
     Serial.println(F("Boot confirmation: MEME/00001.mp3"));
   }
+
+  pinMode(signOutPin, OUTPUT);
 }
 
 void loop() {
@@ -230,6 +233,8 @@ void loop() {
   } else {
     confirmationTimer = 0;
   }
+
+  digitalWrite(signOutPin, switchActive);
 
   delay(5);
 }
